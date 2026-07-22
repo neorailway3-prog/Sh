@@ -623,10 +623,10 @@ async def send_hit_to_channel(card, status, response, gateway, price):
 📝 {response[:45]}
 ⏱️ {time_str}
 🍑 <a href='https://t.me/Rytce'>Rytce</a>""")
-        sent_msg = await bot.send_message(abs(HITS_CHANNEL_ID), msg, parse_mode='html')
+        sent_msg = await bot.send_message(HITS_CHANNEL_ID, msg, parse_mode='html')
         if should_pin:
             try:
-                await bot.pin_message(abs(HITS_CHANNEL_ID), sent_msg.id)
+                await bot.pin_message(HITS_CHANNEL_ID, sent_msg.id)
             except:
                 pass
     except:
