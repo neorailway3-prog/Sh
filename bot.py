@@ -1816,27 +1816,46 @@ async def site_command(event):
     alive_sites = []
     dead_sites = []
     sites_with_price = []
-    batch_size = 10
-    try:
-        for i in range(0, len(sites), batch_size):
-            batch = sites[i:i + batch_size]
+    
+    sem = asyncio.Semaphore(50)
+    
+    async def check_single_site(site):
+        async with sem:
             fresh_proxies = load_proxies()
-            if not fresh_proxies:
-                fresh_proxies = proxies
-            tasks = [test_site_with_price(site, random.choice(fresh_proxies)) for site in batch]
-            results = await asyncio.gather(*tasks)
-            for res in results:
-                if res['status'] == 'alive':
-                    alive_sites.append(res['site'])
-                    sites_with_price.append({'url': res['site'], 'price': res.get('price', 0.0)})
-                else:
-                    dead_sites.append(res['site'])
-            await status_msg.edit(premium_emoji(
-                f"🔄 Cʜᴇᴄᴋɪɴɢ sɪᴛᴇs...\n"
-                f"Cʜᴇᴄᴋᴇᴅ: {len(alive_sites) + len(dead_sites)}/{len(sites)}\n"
-                f"✅ Aʟɪᴠᴇ: {len(alive_sites)}\n"
-                f"❌ Dᴇᴀᴅ: {len(dead_sites)}"
-            ), parse_mode='html')
+            p = random.choice(fresh_proxies) if fresh_proxies else random.choice(proxies)
+            res = await test_site_with_price(site, p)
+            if res['status'] == 'alive':
+                alive_sites.append(res['site'])
+                sites_with_price.append({'url': res['site'], 'price': res.get('price', 0.0)})
+            else:
+                dead_sites.append(res['site'])
+
+    # Background task for progress update
+    async def progress_updater():
+        last_checked = 0
+        while True:
+            checked = len(alive_sites) + len(dead_sites)
+            if checked >= len(sites):
+                break
+            if checked != last_checked:
+                try:
+                    await status_msg.edit(premium_emoji(
+                        f"🔄 Cʜᴇᴄᴋɪɴɢ sɪᴛᴇs...\n"
+                        f"Cʜᴇᴄᴋᴇᴅ: {checked}/{len(sites)}\n"
+                        f"✅ Aʟɪᴠᴇ: {len(alive_sites)}\n"
+                        f"❌ Dᴇᴀᴅ: {len(dead_sites)}"
+                    ), parse_mode='html')
+                    last_checked = checked
+                except Exception:
+                    pass
+            await asyncio.sleep(4.0)
+
+    try:
+        updater = asyncio.create_task(progress_updater())
+        tasks = [check_single_site(s) for s in sites]
+        await asyncio.gather(*tasks)
+        updater.cancel()
+        
         await save_sites_with_price(sites_with_price)
         await save_sites(alive_sites)
         await status_msg.edit(premium_emoji(
@@ -1847,6 +1866,10 @@ async def site_command(event):
             f"(Dᴇᴀᴅ sɪᴛᴇs ᴡᴇʀᴇ ʀᴇᴍᴏᴠᴇᴅ ғʀᴏᴍ ᴛʜᴇ ᴅᴀᴛᴀʙᴀsᴇ)"
         ), parse_mode='html')
     except Exception as e:
+        try:
+            updater.cancel()
+        except:
+            pass
         await status_msg.edit(premium_emoji(f"❌ Eʀʀᴏʀ: {e}"), parse_mode='html')
 
 @bot.on(events.NewMessage(pattern=r'/rm\s+'))
