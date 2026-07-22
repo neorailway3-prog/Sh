@@ -190,11 +190,21 @@ price_filters_cache = {}
 sites_with_price_cache = []
 logs_channel_id_cache = 0
 hits_channel_id_cache = 0
+maintenance_mode = False
 
 def init_db():
-    global logs_channel_id_cache, hits_channel_id_cache, keys_cache, price_filters_cache, sites_with_price_cache
+    global logs_channel_id_cache, hits_channel_id_cache, keys_cache, price_filters_cache, sites_with_price_cache, maintenance_mode
     global HITS_CHANNEL_ID, LOGS_CHANNEL_ID
     
+    # 0. Maintenance
+    settings_coll = sync_db["settings"]
+    maint_doc = settings_coll.find_one({"_id": "maintenance"})
+    if maint_doc:
+        maintenance_mode = maint_doc.get("value", False)
+    else:
+        settings_coll.update_one({"_id": "maintenance"}, {"$set": {"value": False}}, upsert=True)
+        maintenance_mode = False
+
     # 1. Premium Users
     premium_coll = sync_db["premium_users"]
     if premium_coll.count_documents({}) == 0:
@@ -330,6 +340,12 @@ def init_db():
     HITS_CHANNEL_ID = hits_channel_id_cache
 
 init_db()
+
+async def register_user(user_id):
+    try:
+        await db["users"].update_one({"_id": str(user_id)}, {"$set": {"_id": str(user_id)}}, upsert=True)
+    except:
+        pass
 
 def get_file_lines(filepath):
     if filepath == SITES_FILE:
@@ -1293,6 +1309,10 @@ def detect_analytics(html: str, srcs: list[str]) -> list[str]:
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
     user_id = event.sender_id
+    await register_user(user_id)
+    if maintenance_mode and user_id not in ADMIN_ID:
+        await event.reply(premium_emoji("⚠️ <b>Bᴏᴛ ɪs ᴄᴜʀʀᴇɴᴛʟʏ ᴜɴᴅᴇʀ ᴍᴀɪɴᴛᴇɴᴀɴᴄᴇ.</b>\n\nPʟᴇᴀsᴇ ᴛʀʏ ᴀɢᴀɪɴ ʟᴀᴛᴇʀ."), parse_mode='html')
+        return
     welcome_text = f"""━━━━━━━━━━━━━━━━━━━━
 ⚡ High-speed Shopify Gateway Checker
 ━━━━━━━━━━━━━━━━━━━━
@@ -1431,6 +1451,10 @@ async def tools_menu_page2_callback(event):
 @bot.on(events.NewMessage(pattern=r'^/sh(\s+.*)?'))
 async def single_cc_check(event):
     user_id = event.sender_id
+    await register_user(user_id)
+    if maintenance_mode and user_id not in ADMIN_ID:
+        await event.reply(premium_emoji("⚠️ <b>Bᴏᴛ ɪs ᴄᴜʀʀᴇɴᴛʟʏ ᴜɴᴅᴇʀ ᴍᴀɪɴᴛᴇɴᴀɴᴄᴇ.</b>\n\nPʟᴇᴀsᴇ ᴛʀʏ ᴀɢᴀɪɴ ʟᴀᴛᴇʀ."), parse_mode='html')
+        return
     try:
         sender = await event.get_sender()
         username = sender.username if sender.username else f"user_{user_id}"
@@ -1552,6 +1576,10 @@ async def cancel_filter_callback(event):
 @bot.on(events.NewMessage(pattern='/chk'))
 async def check_command(event):
     user_id = event.sender_id
+    await register_user(user_id)
+    if maintenance_mode and user_id not in ADMIN_ID:
+        await event.reply(premium_emoji("⚠️ <b>Bᴏᴛ ɪs ᴄᴜʀʀᴇɴᴛʟỹ ᴜɴᴅᴇʀ ᴍᴀɪɴᴛᴇɴᴀɴᴄᴇ.</b>\n\nPʟᴇᴀsᴇ ᴛʀʏ ᴀɢᴀɪɴ ʟᴀᴛᴇʀ."), parse_mode='html')
+        return
     try:
         sender = await event.get_sender()
         username = sender.username if sender.username else f"user_{user_id}"
@@ -1565,6 +1593,10 @@ async def check_command(event):
 @bot.on(events.NewMessage(pattern=r'^/msh(\s+.*)?'))
 async def msh_command(event):
     user_id = event.sender_id
+    await register_user(user_id)
+    if maintenance_mode and user_id not in ADMIN_ID:
+        await event.reply(premium_emoji("⚠️ <b>Bᴏᴛ ɪs ᴄᴜʀʀᴇɴᴛʟʏ ᴜɴᴅᴇʀ ᴍᴀɪɴᴛᴇɴᴀɴᴄᴇ.</b>\n\nPʟᴇᴀsᴇ ᴛʀʏ ᴀɢᴀɪɴ ʟᴀᴛᴇʀ."), parse_mode='html')
+        return
     if not is_premium(user_id):
         await event.reply(premium_emoji("❌ Aᴄᴄᴇss Dᴇɴɪᴇᴅ\n\nOɴʟʏ ᴘʀᴇᴍɪᴜᴍ ᴜsᴇʀs ᴄᴀɴ ᴜsᴇ ᴛʜɪs ʙᴏᴛ."), parse_mode='html')
         return
@@ -1827,7 +1859,7 @@ async def site_command(event):
     dead_sites = []
     sites_with_price = []
     
-    sem = asyncio.Semaphore(50)
+    sem = asyncio.Semaphore(10)
     
     async def check_single_site(site):
         async with sem:
@@ -1940,7 +1972,7 @@ async def add_sites_command(event):
             await status_msg.edit(premium_emoji("❌ Nᴏ ᴘʀᴏxɪᴇs ᴀᴠᴀɪʟᴀʙʟᴇ to verify sites."), parse_mode='html')
             return
 
-        sem = asyncio.Semaphore(50)
+        sem = asyncio.Semaphore(10)
         verified_sites = []
         checked_count = 0
         
@@ -2044,7 +2076,7 @@ async def seturl_command(event):
             await status_msg.edit(premium_emoji("❌ Nᴏ ᴘʀoxɪᴇs ᴀᴠᴀɪʟᴀʙʟᴇ to verify sites."), parse_mode='html')
             return
 
-        sem = asyncio.Semaphore(50)
+        sem = asyncio.Semaphore(10)
         verified_sites = []
         checked_count = 0
         
@@ -2125,6 +2157,65 @@ async def getsites_command(event):
                 os.remove(filename)
             except:
                 pass
+
+@bot.on(events.NewMessage(pattern='/maintenance'))
+async def maintenance_command(event):
+    global maintenance_mode
+    user_id = event.sender_id
+    if user_id not in ADMIN_ID:
+        return
+    
+    parts = event.text.split(maxsplit=1)
+    if len(parts) < 2:
+        status_str = "ENABLED" if maintenance_mode else "DISABLED"
+        await event.reply(premium_emoji(f"🔧 <b>Mᴀɪɴᴛᴇɴᴀɴᴄᴇ Mᴏᴅᴇ:</b> <code>{status_str}</code>\n\nUsᴀɢᴇ: <code>/maintenance on</code> or <code>/maintenance off</code>"), parse_mode='html')
+        return
+    
+    action = parts[1].strip().lower()
+    if action == 'on':
+        maintenance_mode = True
+        await db["settings"].update_one({"_id": "maintenance"}, {"$set": {"value": True}}, upsert=True)
+        await event.reply(premium_emoji("⚠️ <b>Mᴀɪɴᴛᴇɴᴀɴᴄᴇ Mᴏᴅᴇ has been ENABLED!</b>\n\nOnly admins can use the bot now."), parse_mode='html')
+    elif action == 'off':
+        maintenance_mode = False
+        await db["settings"].update_one({"_id": "maintenance"}, {"$set": {"value": False}}, upsert=True)
+        await event.reply(premium_emoji("✅ <b>Mᴀɪɴᴛᴇɴᴀɴᴄᴇ Mᴏᴅᴇ has been DISABLED!</b>\n\nAll users can use the bot now."), parse_mode='html')
+
+@bot.on(events.NewMessage(pattern='/broadcast'))
+async def broadcast_command(event):
+    user_id = event.sender_id
+    if user_id not in ADMIN_ID:
+        return
+    if not event.reply_to_msg_id:
+        await event.reply(premium_emoji("📝 Pʟᴇᴀsᴇ ʀᴇᴘʟʏ ᴛᴏ a message/photo/document ᴛᴏ ʙʀᴏᴀᴅᴄᴀsᴛ."), parse_mode='html')
+        return
+    
+    reply_msg = await event.get_reply_message()
+    status_msg = await event.reply(premium_emoji("🔄 Sᴛᴀʀᴛɪɴɢ ʙʀᴏᴀᴅᴄᴀsᴛ..."), parse_mode='html')
+    
+    all_users = []
+    try:
+        async for doc in db["users"].find({}):
+            all_users.append(int(doc["_id"]))
+    except Exception as e:
+        await status_msg.edit(premium_emoji(f"❌ Eʀʀᴏʀ fetching users: {e}"), parse_mode='html')
+        return
+        
+    if not all_users:
+        await status_msg.edit(premium_emoji("❌ Nᴏ users found in database to broadcast to."), parse_mode='html')
+        return
+        
+    success = 0
+    failed = 0
+    for uid in all_users:
+        try:
+            await bot.send_message(uid, reply_msg)
+            success += 1
+            await asyncio.sleep(0.1)
+        except Exception:
+            failed += 1
+            
+    await status_msg.edit(premium_emoji(f"✅ <b>Bʀᴏᴀᴅᴄᴀsᴛ Cᴏᴍᴘʟᴇᴛᴇ!</b>\n\n📊 Sᴜᴍᴍᴀʀʏ:\n  ┣ ✅ Sᴜᴄᴄᴇss: {success}\n  ┗ ❌ Fᴀɪʟᴇᴅ: {failed}"), parse_mode='html')
 
 @bot.on(events.NewMessage(pattern='/addpremium'))
 async def add_premium_command(event):
