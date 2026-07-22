@@ -353,13 +353,18 @@ def load_sites():
 
 async def save_sites(sites_list):
     global sites_cache
-    sites_cache = list(sites_list)
+    unique_sites = sorted(list(set([s.strip() for s in sites_list if s.strip()])))
+    sites_cache = unique_sites
     await db["sites"].delete_many({})
-    if sites_list:
-        try:
-            await db["sites"].insert_many([{"_id": s, "url": s} for s in sites_list], ordered=False)
-        except:
-            pass
+    if unique_sites:
+        chunk_size = 1000
+        for i in range(0, len(unique_sites), chunk_size):
+            chunk = unique_sites[i:i+chunk_size]
+            try:
+                await db["sites"].insert_many([{"_id": s, "url": s} for s in chunk], ordered=False)
+            except Exception:
+                pass
+
 
 def load_proxies():
     return list(proxies_cache)
@@ -581,13 +586,8 @@ def format_card_result(status, card, gateway, response, price, brand, bin_type, 
 LOGS_CHANNEL_FILE = "logs_channel.txt"
 
 def load_logs_channel():
-    if os.path.exists(LOGS_CHANNEL_FILE):
-        try:
-            with open(LOGS_CHANNEL_FILE, 'r') as f:
-                return int(f.read().strip())
-        except:
-            return 0
-    return 0
+    global logs_channel_id_cache
+    return logs_channel_id_cache
 
 LOGS_CHANNEL_ID = load_logs_channel()
 
@@ -1830,9 +1830,21 @@ async def site_command(event):
                     sites_with_price.append({'url': res['site'], 'price': res.get('price', 0.0)})
                 else:
                     dead_sites.append(res['site'])
-            await status_msg.edit(premium_emoji(f"🔄 Cʜᴇᴄᴋɪɴɢ sɪᴛᴇs...\n\nCʜᴇᴄᴋᴇᴅ: {len(alive_sites) + len(dead_sites)}/{len(sites)}\nAʟɪᴠᴇ: {len(alive_sites)}\nDᴇᴀᴅ: {len(dead_sites)}"), parse_mode='html')
+            await status_msg.edit(premium_emoji(
+                f"🔄 Cʜᴇᴄᴋɪɴɢ sɪᴛᴇs...\n"
+                f"Cʜᴇᴄᴋᴇᴅ: {len(alive_sites) + len(dead_sites)}/{len(sites)}\n"
+                f"✅ Aʟɪᴠᴇ: {len(alive_sites)}\n"
+                f"❌ Dᴇᴀᴅ: {len(dead_sites)}"
+            ), parse_mode='html')
         await save_sites_with_price(sites_with_price)
-        await status_msg.edit(premium_emoji(f"✅ Sɪᴛᴇ ᴄʜᴇᴄᴋ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\nTᴏᴛᴀʟ: {len(sites)}\n✅ Aʟɪᴠᴇ: {len(alive_sites)}\n❌ Dᴇᴀᴅ: {len(dead_sites)}\n\n(Nᴏ sɪᴛᴇs ᴡᴇʀᴇ ᴅᴇʟᴇᴛᴇᴅ ғʀᴏᴍ ᴛʜᴇ ᴅᴀᴛᴀʙᴀsᴇ)"), parse_mode='html')
+        await save_sites(alive_sites)
+        await status_msg.edit(premium_emoji(
+            f"✅ Sɪᴛᴇ ᴄʜᴇᴄᴋ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\n"
+            f"Tᴏᴛᴀʟ: {len(sites)}\n"
+            f"✅ Aʟɪᴠᴇ: {len(alive_sites)}\n"
+            f"❌ Dᴇᴀᴅ: {len(dead_sites)}\n\n"
+            f"(Dᴇᴀᴅ sɪᴛᴇs ᴡᴇʀᴇ ʀᴇᴍᴏᴠᴇᴅ ғʀᴏᴍ ᴛʜᴇ ᴅᴀᴛᴀʙᴀsᴇ)"
+        ), parse_mode='html')
     except Exception as e:
         await status_msg.edit(premium_emoji(f"❌ Eʀʀᴏʀ: {e}"), parse_mode='html')
 
