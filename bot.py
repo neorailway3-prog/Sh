@@ -480,7 +480,13 @@ def is_site_dead(response_msg, gateway, price):
         'connection refused', 'host not found', 'domain not found',
         'could not connect', 'connection error', 'gateway timeout',
         '502 bad gateway', '503 service unavailable', '504 gateway timeout',
-        'cloudflare error', 'access denied', 'blocked'
+        'cloudflare error', 'access denied', 'blocked',
+        'site error', 'status: 429', 'status: 403', 'status: 400',
+        'too many requests', 'rate limit', 'status: 500', 'status: 502',
+        'status: 503', 'status: 504', 'not shopify', 'no payment gateway',
+        'failed to add to cart', 'out of stock', 'checkout not found',
+        'no checkout page', 'gateway not supported', 'failed to get checkout',
+        'proxy error', 'cannot connect', 'failed', 'refused'
     ]
     
     for keyword in dead_keywords:
@@ -498,11 +504,7 @@ def is_site_dead(response_msg, gateway, price):
     if any(indicator in response_lower for indicator in alive_indicators):
         return False
         
-    # If gateway is Unknown or empty
-    if not gateway or gateway == "Unknown":
-        return True
-        
-    return False
+    return True
 
 async def get_bin_info(card_number):
     try:
@@ -762,7 +764,8 @@ async def test_site_with_price(site, proxy):
             gateway = raw.get('Gateway', '')
             price_display = raw.get('Price', '-')
             price_value = get_price_from_response(raw)
-            if is_site_dead(response_msg, gateway, price_display):
+            status_api = raw.get('Status')
+            if is_site_dead(response_msg, gateway, price_display) or status_api is False or str(status_api).lower() == 'false':
                 return {'site': site, 'status': 'dead', 'price': 0.0}
             else:
                 return {'site': site, 'status': 'alive', 'price': price_value}
