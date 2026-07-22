@@ -522,6 +522,8 @@ def format_card_result(status, card, gateway, response, price, brand, bin_type, 
         status_header = '<tg-emoji emoji-id="5427168083074628963">💎</tg-emoji> <b>CHARGED</b>'
     elif "APPROVED" in status_upper:
         status_header = '<tg-emoji emoji-id="6147460667281511517">✅</tg-emoji> <b>APPROVED</b>'
+    elif "ERROR" in status_upper or "SITE ERROR" in status_upper:
+        status_header = '<tg-emoji emoji-id="5039834317275006048">⚠️</tg-emoji> <b>SITE ERROR</b>'
     else:
         status_header = '<tg-emoji emoji-id="6032606743500951856">❌</tg-emoji> <b>DECLINED</b>'
         
@@ -565,8 +567,11 @@ def format_card_result(status, card, gateway, response, price, brand, bin_type, 
         bank_emoji_id = "6028306016653807599"
     bank_line = f'<tg-emoji emoji-id="{bank_emoji_id}">🏦</tg-emoji> <b>Bᴀɴᴋ</b> <code>{bank}</code>'
     
-    country_emoji_id = "5042003580702164014"
-    country_line = f'<tg-emoji emoji-id="{country_emoji_id}">🥰</tg-emoji> <b>Cᴏᴜɴᴛʀʏ</b> <code>{country} {flag}</code>'
+    country_emoji_id = "6206420230269310869" # globe emoji
+    if "US" in country_upper or "UNITED STATES" in country_upper or "AMERICA" in country_upper:
+        country_line = f'<tg-emoji emoji-id="{country_emoji_id}">🌐</tg-emoji> <b>Cᴏᴜɴᴛʀʏ</b> <code>{country}</code>'
+    else:
+        country_line = f'<tg-emoji emoji-id="{country_emoji_id}">🌐</tg-emoji> <b>Cᴏᴜɴᴛʀʏ</b> <code>{country} {flag}</code>'
     
     dev_line = f'<tg-emoji emoji-id="5039727497143387500">💡</tg-emoji> <b>Mᴀᴅᴇ ʙʏ</b> @Rytce'
     
@@ -686,7 +691,7 @@ async def check_card(card, site, proxy):
     except Exception as e:
         return {'status': 'Site Error', 'message': f'Request/Network error: {str(e)}', 'card': card, 'retry': True}
 
-async def check_card_with_retry(card, sites, proxies, max_retries=20):
+async def check_card_with_retry(card, sites, proxies, max_retries=35):
     if not sites:
         return {'status': 'Dead', 'message': 'No sites available', 'card': card, 'gateway': 'Unknown', 'price': '-', 'price_value': 0}
     if not proxies:
@@ -699,8 +704,13 @@ async def check_card_with_retry(card, sites, proxies, max_retries=20):
         result = await check_card(card, site, proxy)
         if not result.get('retry'):
             return result
+        
+        msg_lower = result.get('message', '').lower()
+        if '429' in msg_lower or 'too many requests' in msg_lower or 'rate limit' in msg_lower:
+            await asyncio.sleep(2.0)
+        else:
+            await asyncio.sleep(0.5)
         attempt += 1
-        await asyncio.sleep(0.5)
     return result
 
 async def test_site_with_price(site, proxy):
