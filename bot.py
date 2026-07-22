@@ -1002,7 +1002,8 @@ async def start_mass_check(user_id, cards, sites, event, status_msg=None):
                             await update_progress(user_id, status_msg.id, all_results, all_results['checked'])
                         except:
                             pass
-        workers = [asyncio.create_task(worker()) for _ in range(10)]
+        concurrency = 50 if len(cards) >= 1000 else (20 if len(cards) >= 100 else 10)
+        workers = [asyncio.create_task(worker()) for _ in range(concurrency)]
         while workers:
             if session_key not in active_sessions:
                 for w in workers:
@@ -1830,9 +1831,8 @@ async def site_command(event):
                 else:
                     dead_sites.append(res['site'])
             await status_msg.edit(premium_emoji(f"🔄 Cʜᴇᴄᴋɪɴɢ sɪᴛᴇs...\n\nCʜᴇᴄᴋᴇᴅ: {len(alive_sites) + len(dead_sites)}/{len(sites)}\nAʟɪᴠᴇ: {len(alive_sites)}\nDᴇᴀᴅ: {len(dead_sites)}"), parse_mode='html')
-        await save_sites(alive_sites)
         await save_sites_with_price(sites_with_price)
-        await status_msg.edit(premium_emoji(f"✅ Sɪᴛᴇ ᴄʜᴇᴄᴋ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\nTᴏᴛᴀʟ: {len(sites)}\nAʟɪᴠᴇ: {len(alive_sites)}\nRᴇᴍᴏᴠᴇᴅ: {len(dead_sites)}"), parse_mode='html')
+        await status_msg.edit(premium_emoji(f"✅ Sɪᴛᴇ ᴄʜᴇᴄᴋ ᴄᴏᴍᴘʟᴇᴛᴇ!\n\nTᴏᴛᴀʟ: {len(sites)}\n✅ Aʟɪᴠᴇ: {len(alive_sites)}\n❌ Dᴇᴀᴅ: {len(dead_sites)}\n\n(Nᴏ sɪᴛᴇs ᴡᴇʀᴇ ᴅᴇʟᴇᴛᴇᴅ ғʀᴏᴍ ᴛʜᴇ ᴅᴀᴛᴀʙᴀsᴇ)"), parse_mode='html')
     except Exception as e:
         await status_msg.edit(premium_emoji(f"❌ Eʀʀᴏʀ: {e}"), parse_mode='html')
 
@@ -1873,46 +1873,118 @@ async def add_sites_command(event):
         file_path = await reply_msg.download_media()
         async with aiofiles.open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             content = await f.read()
-            sites = [line.strip() for line in content.splitlines() if line.strip()]
+            raw_sites = [line.strip() for line in content.splitlines() if line.strip()]
         os.remove(file_path)
-        if not sites:
+        if not raw_sites:
             await status_msg.edit(premium_emoji("❌ Nᴏ ᴠᴀʟɪᴅ sɪᴛᴇs ғᴏᴜɴᴅ ɪɴ ғɪʟᴇ."), parse_mode='html')
             return
-        await status_msg.edit(premium_emoji(f"🔄 Cʜᴇᴄᴋɪɴɢ {len(sites)} sɪᴛᴇs ʙᴇғᴏʀᴇ ᴀᴅᴅɪɴɢ..."), parse_mode='html')
-        proxies = load_proxies()
-        if not proxies:
-            await status_msg.edit(premium_emoji("❌ Nᴏ ᴘʀᴏxɪᴇs ᴀᴠᴀɪʟᴀʙʟᴇ ᴛᴏ ᴛᴇsᴛ sɪᴛᴇs."), parse_mode='html')
-            return
-        alive_sites = []
-        dead_sites = []
-        sites_with_price = []
-        batch_size = 10
-        for i in range(0, len(sites), batch_size):
-            batch = sites[i:i + batch_size]
-            tasks = [test_site_with_price(site, random.choice(proxies)) for site in batch]
-            results = await asyncio.gather(*tasks)
-            for res in results:
-                if res['status'] == 'alive':
-                    alive_sites.append(res['site'])
-                    sites_with_price.append({'url': res['site'], 'price': res.get('price', 0.0)})
-                else:
-                    dead_sites.append(res['site'])
-            await status_msg.edit(premium_emoji(f"🔄 Cʜᴇᴄᴋɪɴɢ sɪᴛᴇs...\n\nCʜᴇᴄᴋᴇᴅ: {len(alive_sites) + len(dead_sites)}/{len(sites)}\n✅ Aʟɪᴠᴇ: {len(alive_sites)}\n❌ Dᴇᴀᴅ: {len(dead_sites)}"), parse_mode='html')
+        
+        sites_to_add = []
+        for site in raw_sites:
+            site_clean = site.lower().replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0].strip()
+            if site_clean and site_clean not in sites_to_add:
+                sites_to_add.append(site_clean)
+                
         current_sites = load_sites()
-        merged_sites = list(set(current_sites + alive_sites))
+        merged_sites = list(set(current_sites + sites_to_add))
         await save_sites(merged_sites)
-        await save_sites_with_price(sites_with_price)
-        result_text = f"""✅ <b>Sɪᴛᴇs ᴜᴘᴅᴀᴛᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!</b>
+        
+        result_text = f"""✅ <b>Sɪᴛᴇs ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!</b>
 
-📊 Tᴏᴛᴀʟ sɪᴛᴇs ʀᴇᴄᴇɪᴠᴇᴅ: {len(sites)}
-✅ Aʟɪᴠᴇ (ᴀᴅᴅᴇᴅ): {len(alive_sites)}
-❌ Dᴇᴀᴅ (ɪɢɴᴏʀᴇᴅ): {len(dead_sites)}
+📊 Tᴏᴛᴀʟ sɪᴛᴇs ʀᴇᴄᴇɪᴠᴇᴅ: {len(raw_sites)}
+✅ Aᴅᴅᴇᴅ: {len(sites_to_add)}
+📊 Cᴜʀʀᴇɴᴛ Tᴏᴛᴀʟ Sɪᴛᴇs: {len(merged_sites)}
 
-🌐 <b>Aᴅᴅᴇᴅ sɪᴛᴇs:</b>
-{chr(10).join([f"• {s}" for s in alive_sites[:5]])}{'...' if len(alive_sites) > 5 else ''}"""
+🌐 <b>Sᴀᴍᴘʟᴇ ᴀᴅᴅᴇᴅ sɪᴛᴇs:</b>
+{chr(10).join([f"• {s}" for s in sites_to_add[:5]])}{'...' if len(sites_to_add) > 5 else ''}"""
         await status_msg.edit(premium_emoji(result_text), parse_mode='html')
     except Exception as e:
         await status_msg.edit(premium_emoji(f"❌ Eʀʀᴏʀ: {e}"), parse_mode='html')
+
+@bot.on(events.NewMessage(pattern=r'/seturl(?:\s+.*)?'))
+async def seturl_command(event):
+    user_id = event.sender_id
+    if user_id not in ADMIN_ID:
+        return
+    
+    text_content = ""
+    reply_msg = None
+    if event.reply_to_msg_id:
+        reply_msg = await event.get_reply_message()
+        if reply_msg.file and reply_msg.file.name.endswith('.txt'):
+            status_msg = await event.reply(premium_emoji("🔄 Pʀᴏᴄᴇssɪɴɢ sɪᴛᴇs ғɪʟᴇ via seturl..."), parse_mode='html')
+            try:
+                file_path = await reply_msg.download_media()
+                async with aiofiles.open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    text_content = await f.read()
+                os.remove(file_path)
+            except Exception as e:
+                await status_msg.edit(premium_emoji(f"❌ Eʀʀᴏʀ: {e}"), parse_mode='html')
+                return
+        else:
+            text_content = reply_msg.text
+            status_msg = await event.reply(premium_emoji("🔄 Pʀᴏᴄᴇssɪɴɢ replied message URLs..."), parse_mode='html')
+    else:
+        parts = event.raw_text.split(maxsplit=1)
+        if len(parts) < 2:
+            await event.reply(premium_emoji("📝 Usᴀɢᴇ: <code>/seturl ʜᴛᴛᴘs://sɪᴛᴇ1.ᴄᴏᴍ, ʜᴛᴛᴘs://sɪᴛᴇ2.ᴄᴏᴍ</code>\nOr reply to a message/file containing sites."), parse_mode='html')
+            return
+        text_content = parts[1]
+        status_msg = await event.reply(premium_emoji("🔄 Pʀᴏᴄᴇssɪɴɢ URLs..."), parse_mode='html')
+
+    try:
+        raw_urls = re.findall(r'(?:https?://)?(?:www\.)?([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', text_content)
+        if not raw_urls:
+            await status_msg.edit(premium_emoji("❌ Nᴏ ᴠᴀʟɪᴅ sɪᴛᴇs/URLs ғᴏᴜɴᴅ."), parse_mode='html')
+            return
+            
+        sites_to_add = []
+        for url in raw_urls:
+            clean_url = url.strip().lower()
+            if clean_url and clean_url not in sites_to_add:
+                sites_to_add.append(clean_url)
+                
+        current_sites = load_sites()
+        merged_sites = list(set(current_sites + sites_to_add))
+        await save_sites(merged_sites)
+        
+        result_text = f"""✅ <b>Sɪᴛᴇs ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ ᴠɪᴀ sᴇᴛᴜʀʟ!</b>
+
+📊 Tᴏᴛᴀʟ URLs ᴅᴇᴛᴇᴄᴛᴇᴅ: {len(raw_urls)}
+✅ Aᴅᴅᴇᴅ: {len(sites_to_add)}
+📊 Cᴜʀʀᴇɴᴛ Tᴏᴛᴀʟ Sɪᴛᴇs: {len(merged_sites)}
+
+🌐 <b>Sᴀᴍᴘʟᴇ ᴀᴅᴅᴇᴅ sɪᴛᴇs:</b>
+{chr(10).join([f"• {s}" for s in sites_to_add[:5]])}{'...' if len(sites_to_add) > 5 else ''}"""
+        await status_msg.edit(premium_emoji(result_text), parse_mode='html')
+    except Exception as e:
+        await status_msg.edit(premium_emoji(f"❌ Eʀʀᴏʀ: {e}"), parse_mode='html')
+
+@bot.on(events.NewMessage(pattern='/getsites'))
+async def getsites_command(event):
+    user_id = event.sender_id
+    if user_id not in ADMIN_ID:
+        return
+    current_sites = load_sites()
+    if not current_sites:
+        await event.reply(premium_emoji("❌ Nᴏ sɪᴛᴇs ɪɴ database."), parse_mode='html')
+        return
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"sites_{user_id}_{timestamp}.txt"
+    try:
+        async with aiofiles.open(filename, 'w') as f:
+            for site in current_sites:
+                await f.write(f"{site}\n")
+        await event.reply(premium_emoji(f"📋 Aʟʟ Sɪᴛᴇs ({len(current_sites)}):\n\nFɪʟᴇ ᴀᴛᴛᴀᴄʜᴇᴅ ʙᴇʟᴏᴡ."), file=filename, parse_mode='html')
+    except Exception as e:
+        await event.reply(premium_emoji(f"❌ Eʀʀᴏʀ: {e}"), parse_mode='html')
+    finally:
+        if os.path.exists(filename):
+            try:
+                os.remove(filename)
+            except:
+                pass
 
 @bot.on(events.NewMessage(pattern='/addpremium'))
 async def add_premium_command(event):
