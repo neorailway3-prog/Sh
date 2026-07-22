@@ -23,6 +23,7 @@ PROXY_FILE = 'proxy.txt'
 PRICE_FILTERS_FILE = "price_filters.json"
 SITES_WITH_PRICE_FILE = "sites_price.json"
 KEYS_FILE = "keys.json"
+LOGS_CHANNEL_FILE = "logs_channel.txt"
 HITS_CHANNEL_ID = 0
 
 bot = TelegramClient('checker_bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
@@ -583,7 +584,7 @@ def format_card_result(status, card, gateway, response, price, brand, bin_type, 
 
 {dev_line}"""
 
-LOGS_CHANNEL_FILE = "logs_channel.txt"
+
 
 def load_logs_channel():
     global logs_channel_id_cache
