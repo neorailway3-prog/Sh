@@ -1990,69 +1990,24 @@ async def add_sites_command(event):
             await status_msg.edit(premium_emoji("❌ Nᴏ ᴠᴀʟɪᴅ sɪᴛᴇs ғᴏᴜɴᴅ ɪɴ ғɪʟᴇ."), parse_mode='html')
             return
         
-        sites_to_check = []
+        sites_to_add = []
         for site in raw_sites:
             site_clean = site.lower().replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0].strip()
-            if site_clean and site_clean not in sites_to_check:
-                sites_to_check.append(site_clean)
+            if site_clean and site_clean not in sites_to_add:
+                sites_to_add.append(site_clean)
                 
-        proxies = load_proxies()
-        if not proxies:
-            await status_msg.edit(premium_emoji("❌ Nᴏ ᴘʀᴏxɪᴇs ᴀᴠᴀɪʟᴀʙʟᴇ to verify sites."), parse_mode='html')
-            return
-
-        sem = asyncio.Semaphore(10)
-        verified_sites = []
-        checked_count = 0
-        
-        async def verify_site(site):
-            nonlocal checked_count
-            async with sem:
-                p = random.choice(proxies)
-                res = await test_site_with_price(site, p)
-                if res['status'] == 'alive':
-                    verified_sites.append(site)
-                checked_count += 1
-
-        async def progress_updater():
-            last_checked = 0
-            while True:
-                checked = checked_count
-                if checked >= len(sites_to_check):
-                    break
-                if checked != last_checked:
-                    try:
-                        await status_msg.edit(premium_emoji(
-                            f"🔄 Vᴇʀɪғʏɪɴɢ sɪᴛᴇs...\n"
-                            f"Cʜᴇᴄᴋᴇᴅ: {checked}/{len(sites_to_check)}\n"
-                            f"✅ Wᴏʀᴋɪɴɢ: {len(verified_sites)}"
-                        ), parse_mode='html')
-                        last_checked = checked
-                    except Exception:
-                        pass
-                await asyncio.sleep(4.0)
-
-        updater = asyncio.create_task(progress_updater())
-        tasks = [verify_site(s) for s in sites_to_check]
-        await asyncio.gather(*tasks)
-        try:
-            updater.cancel()
-        except:
-            pass
-            
         current_sites = load_sites()
-        merged_sites = list(set(current_sites + verified_sites))
+        merged_sites = list(set(current_sites + sites_to_add))
         await save_sites(merged_sites)
         
         result_text = f"""✅ <b>Sɪᴛᴇs ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!</b>
 
 📊 Tᴏᴛᴀʟ sɪᴛᴇs ʀᴇᴄᴇɪᴠᴇᴅ: {len(raw_sites)}
-✅ Aᴅᴅᴇᴅ (Wᴏʀᴋɪɴɢ): {len(verified_sites)}
-❌ Dɪsᴄᴀʀᴅᴇᴅ (Dᴇᴀᴅ): {len(sites_to_check) - len(verified_sites)}
+✅ Aᴅᴅᴇᴅ: {len(sites_to_add)}
 📊 Cᴜʀʀᴇɴᴛ Tᴏᴛᴀʟ Sɪᴛᴇs: {len(merged_sites)}
 
 🌐 <b>Sᴀᴍᴘʟᴇ ᴀᴅᴅᴇᴅ sɪᴛᴇs:</b>
-{chr(10).join([f"• {s}" for s in verified_sites[:5]])}{'...' if len(verified_sites) > 5 else ''}"""
+{chr(10).join([f"• {s}" for s in sites_to_add[:5]])}{'...' if len(sites_to_add) > 5 else ''}"""
         await status_msg.edit(premium_emoji(result_text), parse_mode='html')
     except Exception as e:
         await status_msg.edit(premium_emoji(f"❌ Eʀʀᴏʀ: {e}"), parse_mode='html')
@@ -2094,69 +2049,24 @@ async def seturl_command(event):
             await status_msg.edit(premium_emoji("❌ Nᴏ ᴠᴀʟɪᴅ sɪᴛᴇs/URLs ғᴏᴜɴᴅ."), parse_mode='html')
             return
             
-        sites_to_check = []
+        sites_to_add = []
         for url in raw_urls:
             clean_url = url.strip().lower()
-            if clean_url and clean_url not in sites_to_check:
-                sites_to_check.append(clean_url)
+            if clean_url and clean_url not in sites_to_add:
+                sites_to_add.append(clean_url)
                 
-        proxies = load_proxies()
-        if not proxies:
-            await status_msg.edit(premium_emoji("❌ Nᴏ ᴘʀoxɪᴇs ᴀᴠᴀɪʟᴀʙʟᴇ to verify sites."), parse_mode='html')
-            return
-
-        sem = asyncio.Semaphore(10)
-        verified_sites = []
-        checked_count = 0
-        
-        async def verify_site(site):
-            nonlocal checked_count
-            async with sem:
-                p = random.choice(proxies)
-                res = await test_site_with_price(site, p)
-                if res['status'] == 'alive':
-                    verified_sites.append(site)
-                checked_count += 1
-
-        async def progress_updater():
-            last_checked = 0
-            while True:
-                checked = checked_count
-                if checked >= len(sites_to_check):
-                    break
-                if checked != last_checked:
-                    try:
-                        await status_msg.edit(premium_emoji(
-                            f"🔄 Vᴇʀɪғʏɪɴɢ sɪᴛᴇs...\n"
-                            f"Cʜᴇᴄᴋᴇᴅ: {checked}/{len(sites_to_check)}\n"
-                            f"✅ Wᴏʀᴋɪɴɢ: {len(verified_sites)}"
-                        ), parse_mode='html')
-                        last_checked = checked
-                    except Exception:
-                        pass
-                await asyncio.sleep(4.0)
-
-        updater = asyncio.create_task(progress_updater())
-        tasks = [verify_site(s) for s in sites_to_check]
-        await asyncio.gather(*tasks)
-        try:
-            updater.cancel()
-        except:
-            pass
-            
         current_sites = load_sites()
-        merged_sites = list(set(current_sites + verified_sites))
+        merged_sites = list(set(current_sites + sites_to_add))
         await save_sites(merged_sites)
         
         result_text = f"""✅ <b>Sɪᴛᴇs ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ ᴠɪᴀ sᴇᴛᴜʀʟ!</b>
 
 📊 Tᴏᴛᴀʟ URLs ᴅᴇᴛᴇᴄᴛᴇᴅ: {len(raw_urls)}
-✅ Aᴅᴅᴇᴅ (Wᴏʀᴋɪɴɢ): {len(verified_sites)}
-❌ Dɪsᴄᴀʀᴅᴇᴅ (Dᴇᴀᴅ): {len(sites_to_check) - len(verified_sites)}
+✅ Aᴅᴅᴇᴅ: {len(sites_to_add)}
 📊 Cᴜʀʀᴇɴᴛ Tᴏᴛᴀʟ Sɪᴛᴇs: {len(merged_sites)}
 
 🌐 <b>Sᴀᴍᴘʟᴇ ᴀᴅᴅᴇᴅ sɪᴛᴇs:</b>
-{chr(10).join([f"• {s}" for s in verified_sites[:5]])}{'...' if len(verified_sites) > 5 else ''}"""
+{chr(10).join([f"• {s}" for s in sites_to_add[:5]])}{'...' if len(sites_to_add) > 5 else ''}"""
         await status_msg.edit(premium_emoji(result_text), parse_mode='html')
     except Exception as e:
         await status_msg.edit(premium_emoji(f"❌ Eʀʀᴏʀ: {e}"), parse_mode='html')
