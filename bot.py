@@ -1880,7 +1880,11 @@ async def remove_site_command(event):
     try:
         url_to_remove = event.message.text.split(' ', 1)[1].strip()
         if not url_to_remove:
-            await event.reply(premium_emoji("❌ Usᴀɢᴇ: <code>/rm ʜᴛᴛᴘs://sɪᴛᴇ.ᴄᴏᴍ</code>"), parse_mode='html')
+            await event.reply(premium_emoji("❌ Usᴀɢᴇ: <code>/rm ʜᴛᴛᴘs://sɪᴛᴇ.ᴄᴏᴍ</code>\nOr <code>/rm all</code> to clear all sites."), parse_mode='html')
+            return
+        if url_to_remove.lower() == 'all':
+            await save_sites([])
+            await event.reply(premium_emoji("✅ Aʟʟ sɪᴛᴇs ʀᴇᴍᴏᴠᴇᴅ ғʀᴏᴍ ᴛʜᴇ ᴅᴀᴛᴀʙᴀsᴇ!"), parse_mode='html')
             return
         current_sites = load_sites()
         if url_to_remove not in current_sites:
